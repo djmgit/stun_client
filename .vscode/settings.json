@@ -3,6 +3,7 @@
         "string.h": "c",
         "stdio.h": "c",
         "socket.h": "c",
-        "stdlib.h": "c"
+        "stdlib.h": "c",
+        "stdint.h": "c"
     }
 }
