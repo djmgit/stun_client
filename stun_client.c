@@ -7,9 +7,9 @@
 #include <stdint.h>
 
 #define STUN_SERVER "216.93.246.18"
-#define STUN_SERVER_PORT "3478"
+#define STUN_SERVER_PORT 3478
 #define REQ_LEN 20
-#define BUFLEN 512	//Max length of buffer
+#define BUFLEN 200	//Max length of buffer
 
 #define exitWithError(msg)    do {perror(msg); exit(EXIT_FAILURE);} while (0)
 
@@ -51,7 +51,31 @@ void stunRequest() {
     }
 
     uint16_t rtype = *(uint16_t *)(&stunResponse[0]);
-    printf("%x\n", rtype);
+    printf("message type: %x\n", rtype);
+
+    uint16_t len = htons(*(uint16_t *)(&stunResponse[2]));
+    printf("message length: %d\n", len);
+
+    int i = 20;
+    uint16_t attrType;
+    uint16_t attrLen;
+    while(i < sizeof(stunResponse)) {
+        attrType = htons(*(uint16_t *)&stunResponse[i]);
+        //printf("attrType: %x\n", attrType);
+        attrLen = *(uint16_t *)&stunResponse[i+2];
+        //printf("attrLen: %x\n", attrLen);
+        if (attrType == 0x0001) {
+            uint16_t port = ntohs(*(uint16_t *)&stunResponse[i+6]);
+            printf("port: %d\n", port);
+
+            uint8_t ip1 = stunResponse[i+8];
+            uint8_t ip2 = stunResponse[i+9];
+            uint8_t ip3 = stunResponse[i+10];
+            uint8_t ip4 = stunResponse[i+11];
+            printf("ip1: %d.%d.%d.%d\n", ip1, ip2, ip3, ip4);
+        }
+        i += (4 + attrLen);
+    }
 }
 
 int main() {
