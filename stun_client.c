@@ -15,12 +15,22 @@
 
 void stunRequest() {
     struct sockaddr_in stunServerAddr;
+    struct sockaddr_in clientAddr;
     int sock, stunServerAddrLen = sizeof(stunServerAddr);
     uint8_t stunRequest[REQ_LEN];
     uint8_t stunResponse[BUFLEN];
 
     if ((sock=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
         exitWithError("socket could not be created");
+    }
+
+    memset((uint8_t *)&clientAddr, 0, sizeof(clientAddr));
+    clientAddr.sin_family = AF_INET;
+    clientAddr.sin_port = htons(54320);
+    clientAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    if (bind(sock, (struct sockaddr*)&clientAddr, sizeof(clientAddr)) == -1) {
+        exitWithError("bind failed");
     }
 
     memset((uint8_t *)&stunServerAddr, 0, sizeof(stunServerAddr));
@@ -62,17 +72,27 @@ void stunRequest() {
     while(i < sizeof(stunResponse)) {
         attrType = htons(*(uint16_t *)&stunResponse[i]);
         //printf("attrType: %x\n", attrType);
-        attrLen = *(uint16_t *)&stunResponse[i+2];
+        attrLen = htons(*(uint16_t *)&stunResponse[i+2]);
         //printf("attrLen: %x\n", attrLen);
         if (attrType == 0x0001) {
             uint16_t port = ntohs(*(uint16_t *)&stunResponse[i+6]);
-            printf("port: %d\n", port);
+            printf("external port: %d\n", port);
 
             uint8_t ip1 = stunResponse[i+8];
             uint8_t ip2 = stunResponse[i+9];
             uint8_t ip3 = stunResponse[i+10];
             uint8_t ip4 = stunResponse[i+11];
-            printf("ip1: %d.%d.%d.%d\n", ip1, ip2, ip3, ip4);
+            printf("external IP: %d.%d.%d.%d\n", ip1, ip2, ip3, ip4);
+        }
+        if (attrType == 0x0005) {
+            uint16_t port = ntohs(*(uint16_t *)&stunResponse[i+6]);
+            printf("changed port: %d\n", port);
+
+            uint8_t ip1 = stunResponse[i+8];
+            uint8_t ip2 = stunResponse[i+9];
+            uint8_t ip3 = stunResponse[i+10];
+            uint8_t ip4 = stunResponse[i+11];
+            printf("changed IP: %d.%d.%d.%d\n", ip1, ip2, ip3, ip4);
         }
         i += (4 + attrLen);
     }
