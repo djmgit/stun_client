@@ -14,27 +14,14 @@
 
 #define exitWithError(msg)    do {perror(msg); exit(EXIT_FAILURE);} while (0)
 
-void stunRequest(char *stunHost, uint16_t stunPort, uint8_t *stunData, uint8_t stunDataLen, char *extHost, uint16_t *extPort,
+int stunRequest(int sock, char *stunHost, uint16_t stunPort, uint8_t *stunData, uint8_t stunDataLen, char *extHost, uint16_t *extPort,
                  char *changedHost, uint16_t *changedPort) {
     struct sockaddr_in stunServerAddr;
-    struct sockaddr_in clientAddr;
-    int sock, stunServerAddrLen = sizeof(stunServerAddr);
+    int stunServerAddrLen = sizeof(stunServerAddr);
     uint8_t *stunRequest = (uint8_t *)malloc((REQ_LEN_BASE + stunDataLen) * sizeof(uint8_t));
     uint8_t stunResponse[BUFLEN];
 
     memset(stunRequest, 0, REQ_LEN_BASE + stunDataLen);
-    if ((sock=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
-        exitWithError("socket could not be created");
-    }
-
-    memset((uint8_t *)&clientAddr, 0, sizeof(clientAddr));
-    clientAddr.sin_family = AF_INET;
-    clientAddr.sin_port = htons(54320);
-    clientAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    if (bind(sock, (struct sockaddr*)&clientAddr, sizeof(clientAddr)) == -1) {
-        exitWithError("bind failed");
-    }
 
     memset((uint8_t *)&stunServerAddr, 0, sizeof(stunServerAddr));
     stunServerAddr.sin_family = AF_INET;
@@ -60,17 +47,22 @@ void stunRequest(char *stunHost, uint16_t stunPort, uint8_t *stunData, uint8_t s
 
     int r = sendto(sock, stunRequest, REQ_LEN_BASE + stunDataLen, 0, (struct sockaddr *)&stunServerAddr, stunServerAddrLen);
     if (r == -1) {
-        exitWithError("send failed");
+        //exitWithError("send failed");
+        return -1;
     }
 
     memset(stunResponse, '\0', BUFLEN);
     r = recvfrom(sock, stunResponse, BUFLEN, 0, NULL, 0);
     if (r == -1) {
-        exitWithError("Failed to receive");
+        //exitWithError("Failed to receive");
+        return -1;
     }
 
     uint16_t rtype = *(uint16_t *)(&stunResponse[0]);
     printf("Recived message type: %x\n", rtype);
+    if (rtype != 0x0101) {
+        return -1;
+    }
 
     uint16_t len = htons(*(uint16_t *)(&stunResponse[2]));
     printf("Received message length: %d\n", len);
@@ -112,10 +104,44 @@ void stunRequest(char *stunHost, uint16_t stunPort, uint8_t *stunData, uint8_t s
 }
 
 int main() {
+    int sock;
+    struct sockaddr_in clientAddr;
     char *extHost = (char *)malloc(16 * sizeof(char));
     uint16_t extPort = 0;
     char *changedHost = (char *)malloc(16 * sizeof(char));
     uint16_t changedPort = 0;
-    stunRequest(STUN_SERVER, STUN_SERVER_PORT, NULL, 0, extHost, &extPort, changedHost, &changedPort);
-    printf("IP : %s\n", extHost);
+    char *tempHost = (char *)malloc(16 * sizeof(char));
+    uint16_t tempPort = 0;
+    uint8_t stunData[8];
+    char *natType = "";
+
+    if ((sock=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
+        exitWithError("socket could not be created");
+    }
+
+    memset((uint8_t *)&clientAddr, 0, sizeof(clientAddr));
+
+    clientAddr.sin_family = AF_INET;
+    clientAddr.sin_port = htons(54320);
+    clientAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    if (bind(sock, (struct sockaddr*)&clientAddr, sizeof(clientAddr)) == -1) {
+        exitWithError("bind failed");
+    }
+
+    *(uint16_t *)(&stunData[0]) = htons(0x0003);
+    *(uint16_t *)(&stunData[2])= htons(0x0004);
+    *(uint32_t *)(&stunData[4])= htons(0x00000006);
+    int r = stunRequest(sock, STUN_SERVER, STUN_SERVER_PORT, NULL, 0, extHost, &extPort, changedHost, &changedPort);
+
+    printf("Determing NAT type .......\n\n");
+    printf("Making change request.....");
+    r = stunRequest(sock, STUN_SERVER, STUN_SERVER_PORT, stunData, 0x0008, tempHost, &tempPort, changedHost, &changedPort);
+    if (r != -1) {
+        natType = "Full Cone";
+    } else {
+        natType = "Not Full Cone";
+    }
+
+    printf("%s\n", natType);
 }
