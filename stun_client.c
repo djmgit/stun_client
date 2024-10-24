@@ -75,7 +75,7 @@ int stunRequest(int sock, char *stunHost, uint16_t stunPort, uint8_t *stunData, 
         //printf("attrType: %x\n", attrType);
         attrLen = htons(*(uint16_t *)&stunResponse[i+2]);
         //printf("attrLen: %x\n", attrLen);
-        if (attrType == 0x0001) {
+        if (attrType == 0x0001 && extHost != NULL) {
             uint16_t port = ntohs(*(uint16_t *)&stunResponse[i+6]);
             printf("external port: %d\n", port);
             *extPort = port;
@@ -87,7 +87,7 @@ int stunRequest(int sock, char *stunHost, uint16_t stunPort, uint8_t *stunData, 
             snprintf(extHost, MAX_IP_LENGTH_STR, "%d.%d.%d.%d", ip1, ip2, ip3, ip4);
             printf("external IP: %d.%d.%d.%d\n", ip1, ip2, ip3, ip4);
         }
-        if (attrType == 0x0005) {
+        if (attrType == 0x0005 && changedHost != NULL) {
             uint16_t port = ntohs(*(uint16_t *)&stunResponse[i+6]);
             printf("changed port: %d\n", port);
             *changedPort = port;
@@ -130,18 +130,35 @@ int main() {
     }
 
     *(uint16_t *)(&stunData[0]) = htons(0x0003);
-    *(uint16_t *)(&stunData[2])= htons(0x0004);
-    *(uint32_t *)(&stunData[4])= htons(0x00000006);
+    *(uint16_t *)(&stunData[2]) = htons(0x0004);
+    *(uint32_t *)(&stunData[4]) = htons(0x00000006);
     int r = stunRequest(sock, STUN_SERVER, STUN_SERVER_PORT, NULL, 0, extHost, &extPort, changedHost, &changedPort);
 
     printf("Determing NAT type .......\n\n");
-    printf("Making change request.....");
-    r = stunRequest(sock, STUN_SERVER, STUN_SERVER_PORT, stunData, 0x0008, tempHost, &tempPort, changedHost, &changedPort);
+    printf("Making change request.....\n");
+    r = stunRequest(sock, STUN_SERVER, STUN_SERVER_PORT, stunData, 0x0008, tempHost, &tempPort, NULL, NULL);
     if (r != -1) {
         natType = "Full Cone";
     } else {
-        natType = "Not Full Cone";
+        r = stunRequest(sock, changedHost, changedPort, NULL, 0, tempHost, &tempPort, NULL, NULL);
+        if (r == -1) {
+            natType = "Could not connect to STUN server on changed IP and Port";
+        } else {
+            if (strcpy(extHost, tempHost) == 0 && extPort == tempPort) {
+                printf("Testing for Restricted NAT\n");
+                *(uint32_t *)(&stunData[4]) = htons(0x00000002);
+                r = stunRequest(sock, STUN_SERVER, STUN_SERVER_PORT, stunData, 0x0008, tempHost, &tempPort, NULL, NULL);
+                if (r != -1) {
+                    natType = "Restricted NAT";
+                } else {
+                    natType = "Restricted Port Nat";
+                }
+
+            } else {
+                natType = "Symmetric NAT";
+            }
+        }
     }
 
-    printf("%s\n", natType);
+    printf("Nat Type: %s\n", natType);
 }
