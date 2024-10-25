@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <time.h>
 
 #define STUN_SERVER "216.93.246.18"
 #define STUN_SERVER_PORT 3478
@@ -14,12 +15,22 @@
 
 #define exitWithError(msg)    do {perror(msg); exit(EXIT_FAILURE);} while (0)
 
+
+void generateTranId(uint32_t tranId[4]) {
+    for (int i = 0; i < 4; i++) {
+        tranId[i] = rand();
+    }
+    return;
+}
+
 int stunRequest(int sock, char *stunHost, uint16_t stunPort, uint8_t *stunData, uint8_t stunDataLen, char *extHost, uint16_t *extPort,
                  char *changedHost, uint16_t *changedPort) {
     struct sockaddr_in stunServerAddr;
     int stunServerAddrLen = sizeof(stunServerAddr);
     uint8_t *stunRequest = (uint8_t *)malloc((REQ_LEN_BASE + stunDataLen) * sizeof(uint8_t));
     uint8_t stunResponse[BUFLEN];
+    uint32_t tranId[4];
+    generateTranId(tranId);
 
     memset(stunRequest, 0, REQ_LEN_BASE + stunDataLen);
 
@@ -34,10 +45,10 @@ int stunRequest(int sock, char *stunHost, uint16_t stunPort, uint8_t *stunData, 
 
     *(short *)(&stunRequest[0]) = htons(0x0001);
 	*(short *)(&stunRequest[2]) = htons(stunDataLen);
-	*(int *)(&stunRequest[4])   = htonl(0x11111111);
-	*(int *)(&stunRequest[8]) = htonl(0x22222222);
-	*(int *)(&stunRequest[12])= htonl(0x33333333);
-	*(int *)(&stunRequest[16])= htonl(0x44444444);
+    
+    for (int i = 4; i < 4; i += 4) {
+        *(int *)(&stunRequest[i]) = htonl(tranId[(i/4)-1]);
+    }
     if (stunDataLen == 0x0008 && stunData != NULL){
         //*(uint16_t *)(&stunRequest[20])= htons(0x0003);
         //*(short *)(&stunRequest[22])= htons(0x0004);
@@ -62,6 +73,11 @@ int stunRequest(int sock, char *stunHost, uint16_t stunPort, uint8_t *stunData, 
     printf("Recived message type: %x\n", rtype);
     if (rtype != 0x0101) {
         return -1;
+    }
+    for (int i = 4; i < 4; i += 4) {
+        if (*(int *)(&stunResponse[i]) != ntohl(tranId[(i/4)-1])) {
+            return -1;
+        }
     }
 
     uint16_t len = htons(*(uint16_t *)(&stunResponse[2]));
@@ -104,6 +120,7 @@ int stunRequest(int sock, char *stunHost, uint16_t stunPort, uint8_t *stunData, 
 }
 
 int main() {
+    srand(time(0));
     int sock;
     struct sockaddr_in clientAddr;
     char *extHost = (char *)malloc(16 * sizeof(char));
@@ -117,7 +134,7 @@ int main() {
 
     if ((sock=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
         exitWithError("socket could not be created");
-    }
+    }srand(time(0));
 
     memset((uint8_t *)&clientAddr, 0, sizeof(clientAddr));
 

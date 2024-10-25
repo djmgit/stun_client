@@ -11,4 +11,6 @@ int main() {
 
     int i = strcmp(ch1, ch2);
     printf("%d\n", i);
+
+    printf("%d\n", RAND_MAX);
 }
